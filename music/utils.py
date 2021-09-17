@@ -20,6 +20,11 @@ class BotNotPlayingFailure(commands.CheckFailure):
     pass
 
 
+class BotNotConnectedFailure(commands.CheckFailure):
+    message = "**I am not connected to a voice channel.**"
+    pass
+
+
 def check_voice():
     def predicate(ctx):
         bot_voice = ctx.voice_client
@@ -49,6 +54,16 @@ def check_bot_voice():
     def predicate(ctx):
         if not ctx.voice_client.is_playing():
             raise BotNotPlayingFailure
+
+        return True
+
+    return commands.check(predicate)
+
+
+def check_bot_connected():
+    def predicate(ctx):
+        if not ctx.voice_client.is_connected():
+            raise BotNotConnectedFailure
 
         return True
 

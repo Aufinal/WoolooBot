@@ -1,9 +1,10 @@
-import asyncio
+from typing import Dict, Union
 
 import youtube_dl
 from discord.player import FFmpegPCMAudio
 
-from typing import Dict, Optional, Union
+# Suppress noise about console usage from errors
+youtube_dl.utils.bug_reports_message = lambda: ""
 
 ytdl_format_options = {
     "format": "bestaudio/best",
@@ -19,6 +20,16 @@ ytdl_format_options = {
 
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 
+ffmpeg_options = [
+    "-vn",  # discard video
+    "-multiple_requests 1",  # uhhh
+    "-reconnect 1",  # reconnect on failure...
+    "-reconnect_streamed 1",  # ... even if streaming...
+    "-reconnect_delay_max 5",  # ... fail after 5s of failed attempts
+    "-fflags +discardcorrupt",  # don't crash on corrupt frames
+    "-bufsize 960k",  # small buffer (music is 192kbps)
+]
+
 
 class YoutubeTrack:
     def __init__(self, ytdl_info: Dict[str, str], processed: bool = True) -> None:
@@ -26,51 +37,48 @@ class YoutubeTrack:
         self.processed = processed
 
     def from_ytdl(self, ytdl_info: Dict[str, str]) -> None:
-        for attr in ("title", "url", "duration"):
-            setattr(self, attr, ytdl_info[attr])
+        for attr in ("title", "url", "duration", "thumbnail", "channel"):
+            setattr(self, attr, ytdl_info.get(attr, ""))
 
-    async def update_info(self, loop: Optional[asyncio.AbstractEventLoop] = None):
-        loop = loop or asyncio.get_event_loop()
-        new_info = await loop.run_in_executor(
-            None, lambda: ytdl.extract_info(self.url, ie_key="Youtube")
-        )
+    def update_info(self):
+        new_info = ytdl.extract_info(self.url, ie_key="Youtube")
         self.from_ytdl(new_info)
+        self.processed = True
 
-    def as_audio(self):
-        return FFmpegPCMAudio(
-            self.url,
-            options=(
-                "-vn -multiple_requests 1 -reconnect 1"
-                " -reconnect_streamed 1 -reconnect_delay_max 5 -fflags +discardcorrupt"
-            ),
-        )
+    @property
+    def pretty_duration(self):
+        return "{:02d}:{:02d}".format(*divmod(self.duration, 60))
+
+    def as_audio(self) -> FFmpegPCMAudio:
+        return FFmpegPCMAudio(self.url, options=" ".join(ffmpeg_options))
 
 
 class YoutubePlaylist:
-    def __init__(self, ytdl_info):
+    def __init__(self, ytdl_info: Dict[str, str]) -> None:
         self.title = ytdl_info["title"]
         self.entries = [
             YoutubeTrack(info, processed=False) for info in ytdl_info["entries"]
         ]
 
 
-def yt_search(
-    query: str, ie_key: Optional[str] = None
-) -> Union[None, YoutubeTrack, YoutubePlaylist]:
-    data = ytdl.extract_info(query, ie_key=ie_key)
+def yt_search(query: str) -> Union[None, YoutubeTrack, YoutubePlaylist]:
+    data = ytdl.extract_info(query)
 
     if data["extractor"] == "youtube:search":
         # Search results: we only take the first one if it exists
         results = data.get("entries", [])
         if len(results):
-            track = results[0]
-            return YoutubeTrack(track, processed=False)
+            track = YoutubeTrack(results[0])
+            track.update_info()
+            return track
         else:
             return None
 
     elif data.get("_type") == "playlist":
-        # We add the whole unprocessed playlist for speed
-        return YoutubePlaylist(data)
+        playlist = YoutubePlaylist(data)
+        # We only process the first entry, for thumbnail purposes
+        playlist.entries[0].update_info()
+        return playlist
 
     else:
         return YoutubeTrack(data)

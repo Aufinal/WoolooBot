@@ -1,27 +1,21 @@
 import asyncio
-from typing import List
 
 from discord.ext import commands
-from discord.ext.commands.errors import CommandError
 from youtube_dl.utils import YoutubeDLError
 
-from .utils import (
-    check_channel,
-    check_voice,
-    check_bot_voice,
-)
-from .youtube import yt_search, YoutubePlaylist, YoutubeTrack
+from .queue import TrackQueue
+from .utils import check_bot_connected, check_bot_voice, check_channel, check_voice
+from .youtube import yt_search
 
 
 class Music(commands.Cog):
     def __init__(self, bot):
         # TODO: multiple guilds
         self.bot = bot
-        self.queue: List[YoutubeTrack] = []
+        self.queue = TrackQueue()
         self.bound_channel = None
 
     async def cog_command_error(self, ctx, error):
-        print(error)
         if isinstance(error, commands.CheckFailure) and hasattr(error, "message"):
             await ctx.send(error.message)
 
@@ -52,20 +46,10 @@ class Music(commands.Cog):
         if search_result is None:
             return await self.speak("No results found !")
 
-        elif isinstance(search_result, YoutubeTrack):
-            self.queue.append(search_result)
-            # TODO: embed
-            await self.speak(f"New song enqueued: {search_result.title}")
-
-        elif isinstance(search_result, YoutubePlaylist):
-            self.queue.extend(search_result.entries)
-            # TODO: embed
-            await self.speak(
-                f"Playlist enqueued: {search_result.title} ({len(search_result.entries)} songs)"
-            )
-
         else:
-            raise CommandError("Search result is of unknown type")
+            search_result.requested_by = ctx.author
+            embed = self.queue.enqueue(search_result)
+            await self.speak(embed=embed)
 
         if not ctx.voice_client.is_playing():
             return await self.next_track(ctx)
@@ -74,34 +58,72 @@ class Music(commands.Cog):
         if ctx.voice_client is None:
             return
 
-        if ctx.voice_client.is_playing():
+        (track, embed) = self.queue.pop()
+
+        if track is None:
+            print("Track is None")
             ctx.voice_client.stop()
+            return
 
-        track = self.queue.pop(0)
         if not track.processed:
-            await track.update_info(self.bot.loop)
+            print("Processing...")
+            await self.bot.loop.run_in_executor(None, track.update_info)
 
-        await self.speak(f"Now playing : {track.title}")
+        await self.speak(embed=embed)
 
-        def after(error):
-            if error:
-                print(f"Playback error: {error}")
-                return
+        if not ctx.voice_client.is_playing():
 
-            future = asyncio.run_coroutine_threadsafe(
-                self.next_track(ctx), self.bot.loop
-            )
+            def after(error):
+                if error:
+                    print(f"Playback error: {error}")
+                    return
 
-            try:
-                future.result()
-            except:
-                pass
+                future = asyncio.run_coroutine_threadsafe(
+                    self.next_track(ctx), self.bot.loop
+                )
 
-        ctx.voice_client.play(track.as_audio(), after=after)
+                try:
+                    future.result()
+                except BaseException:
+                    pass
+
+            ctx.voice_client.play(track.as_audio(), after=after)
+
+        else:
+            ctx.voice_client.source = track.as_audio()
 
     @commands.command()
-    @check_voice()
     @check_channel()
+    @check_voice()
     @check_bot_voice()
     async def skip(self, ctx):
+        await ctx.send("**Skipping current track.**")
         return await self.next_track(ctx)
+
+    @commands.command()
+    @check_channel()
+    @check_voice()
+    @check_bot_voice()
+    async def pause(self, ctx):
+        ctx.voice_client.pause()
+        return await ctx.send("**Playback paused.**")
+
+    @commands.command()
+    @check_channel()
+    @check_voice()
+    @check_bot_connected()
+    async def resume(self, ctx):
+        if not ctx.voice_client.is_paused():
+            return await ctx.send("**I am not paused.**")
+        ctx.voice_client.resume()
+        return await ctx.send("**Playback resumed.**")
+
+    @commands.command()
+    @check_channel()
+    @check_voice()
+    @check_bot_connected()
+    async def disconnect(self, ctx):
+        self.bound_channel = None
+        self.queue.reset()
+        await ctx.voice_client.disconnect()
+        return await ctx.send("**Successfully disconnected.**")
