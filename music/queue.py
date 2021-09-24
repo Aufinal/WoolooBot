@@ -1,3 +1,4 @@
+from time import strftime, gmtime, time
 from typing import List, Optional, Tuple, Union
 
 import discord
@@ -8,6 +9,15 @@ from .youtube import YoutubePlaylist, YoutubeTrack
 class TrackQueue:
     def __init__(self):
         self.entries: List[YoutubeTrack] = []
+        self.playing: Optional[YoutubeTrack] = None
+        self.playing_since: Optional[float] = None
+
+    def queue_time(self):
+        if self.playing is not None and self.playing_since is not None:
+            track_remaining = int(self.playing_since + self.playing.duration - time())
+        else:
+            track_remaining = 0
+        return track_remaining + sum(entry.duration for entry in self.entries)
 
     def enqueue(self, item: Union[YoutubeTrack, YoutubePlaylist]) -> discord.Embed:
         if isinstance(item, YoutubeTrack):
@@ -16,13 +26,12 @@ class TrackQueue:
             return self.enqueue_playlist(item)
 
     def enqueue_track(self, track: YoutubeTrack) -> discord.Embed:
-        # TODO: be more precise
-        time_until = sum(tr.duration for tr in self.entries)
         tracks_until = len(self.entries)
+        time_until = self.queue_time()
         self.entries.append(track)
 
         embed = discord.Embed(
-            description=f"[{track.title}]({track.url})",
+            description=track.markdown_link,
         )
         embed.set_author(
             name="Track added to queue", icon_url=track.requested_by.avatar_url
@@ -41,11 +50,11 @@ class TrackQueue:
             value="Now" if tracks_until == 0 else tracks_until,
             inline=False,
         )
+
         return embed
 
     def enqueue_playlist(self, playlist: YoutubePlaylist) -> discord.Embed:
-        # TODO: be more precise
-        time_until = sum(tr.duration for tr in self.entries)
+        time_until = self.queue_time()
         tracks_until = len(self.entries)
         for entry in playlist.entries:
             entry.requested_by = playlist.requested_by
@@ -75,24 +84,47 @@ class TrackQueue:
 
         return embed
 
-    def pop(self) -> Optional[Tuple[YoutubeTrack, discord.Embed]]:
-
+    def next_song(self) -> Tuple[Optional[YoutubeTrack], Optional[discord.Embed]]:
         if self.entries:
             track = self.entries.pop(0)
             next_track = self.entries[0].title if self.entries else "Nothing"
-            embed = discord.Embed(
-                title="Now playing",
-                description=f"[{track.title}]({track.url})",
-            )
-            embed.set_thumbnail(url=track.thumbnail)
-            embed.add_field(
-                name="Requested by", value=f"`{track.requested_by.display_name}`"
-            )
-            embed.add_field(name="Duration", value=track.pretty_duration)
-            embed.add_field(name="Up next", value=f"`{next_track}`", inline=False)
-            return (track, embed)
+            return (track, next_track)
         else:
             return (None, None)
 
-    def reset(self):
+    def clear(self) -> None:
         self.entries = []
+
+    def as_embed(self) -> discord.Embed:
+        embed = discord.Embed(title="Current queue")
+
+        now_playing = "   {} | {} | Requested by {}".format(
+            self.playing.markdown_link,
+            self.playing.pretty_duration,
+            self.playing.requested_by.name,
+        )
+
+        up_next = ""
+        for (i, track) in enumerate(self.entries[:10]):
+            up_next += "{}. {} | {} | Requested by {}".format(
+                i + 1,
+                track.markdown_link,
+                track.pretty_duration,
+                track.requested_by.name,
+            )
+            up_next += "\n\n"
+
+        num_tracks = len(self.entries)
+        tot_duration = int(sum(entry.duration for entry in self.entries))
+        strformat = "%M:%S" if tot_duration < 3600 else "%H:%M:%S"
+        tot_duration = strftime(strformat, gmtime(tot_duration))
+
+        embed.description = f"""
+        **Now playing:**
+        {now_playing}
+
+        **Up next:**
+        {up_next}
+        **{num_tracks} tracks in queue - {tot_duration} total length**"""
+
+        return embed

@@ -1,4 +1,5 @@
 import asyncio
+import time
 
 from discord.ext import commands
 from youtube_dl.utils import YoutubeDLError
@@ -16,6 +17,7 @@ class Music(commands.Cog):
         self.bound_channel = None
 
     async def cog_command_error(self, ctx, error):
+        print(error)
         if isinstance(error, commands.CheckFailure) and hasattr(error, "message"):
             await ctx.send(error.message)
 
@@ -36,7 +38,9 @@ class Music(commands.Cog):
 
             self.bound_channel = text_channel
             await voice_channel.connect()
-            await self.speak(f"Joined {voice_channel} and bound to {text_channel}.")
+            await self.speak(
+                f"Joined {voice_channel.mention} and bound to {text_channel.mention}."
+            )
 
         try:
             search_result = await self.bot.loop.run_in_executor(None, yt_search, query)
@@ -58,16 +62,17 @@ class Music(commands.Cog):
         if ctx.voice_client is None:
             return
 
-        (track, embed) = self.queue.pop()
+        (track, next_track) = self.queue.next_song()
 
         if track is None:
-            print("Track is None")
             ctx.voice_client.stop()
             return
 
         if not track.processed:
-            print("Processing...")
             await self.bot.loop.run_in_executor(None, track.update_info)
+
+        embed = track.as_embed()
+        embed.add_field(name="Up next", value=next_track, inline=False)
 
         await self.speak(embed=embed)
 
@@ -75,7 +80,7 @@ class Music(commands.Cog):
 
             def after(error):
                 if error:
-                    print(f"Playback error: {error}")
+                    print(f"Playback error: {error.message}")
                     return
 
                 future = asyncio.run_coroutine_threadsafe(
@@ -92,6 +97,9 @@ class Music(commands.Cog):
         else:
             ctx.voice_client.source = track.as_audio()
 
+        self.queue.playing = track
+        self.queue.playing_since = time.time()
+
     @commands.command()
     @check_channel()
     @check_voice()
@@ -106,6 +114,7 @@ class Music(commands.Cog):
     @check_bot_voice()
     async def pause(self, ctx):
         ctx.voice_client.pause()
+        self.paused_at = time.time()
         return await ctx.send("**Playback paused.**")
 
     @commands.command()
@@ -116,6 +125,9 @@ class Music(commands.Cog):
         if not ctx.voice_client.is_paused():
             return await ctx.send("**I am not paused.**")
         ctx.voice_client.resume()
+        if getattr(self, "paused_at", None):
+            self.queue.playing_since += time.time() - self.paused_at
+            self.paused_at = None
         return await ctx.send("**Playback resumed.**")
 
     @commands.command()
@@ -124,6 +136,13 @@ class Music(commands.Cog):
     @check_bot_connected()
     async def disconnect(self, ctx):
         self.bound_channel = None
-        self.queue.reset()
+        self.queue.clear()
         await ctx.voice_client.disconnect()
         return await ctx.send("**Successfully disconnected.**")
+
+    @commands.command()
+    @check_channel()
+    @check_voice()
+    @check_bot_connected()
+    async def queue(self, ctx):
+        await ctx.send(embed=self.queue.as_embed())

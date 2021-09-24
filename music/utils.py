@@ -68,3 +68,8 @@ def check_bot_connected():
         return True
 
     return commands.check(predicate)
+
+
+def format_time(time: int) -> str:
+    """Takes a time in seconds and formats in HH:mm:ss or mm:ss,
+    depending on whether it's above an hour."""

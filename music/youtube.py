@@ -1,43 +1,42 @@
-from typing import Dict, Union
+from typing import Dict, Optional, Union
 
 import youtube_dl
-from discord.player import FFmpegPCMAudio
+from discord import Member, Embed
+from .player import FFmpegTmpFileAudio
 
 # Suppress noise about console usage from errors
 youtube_dl.utils.bug_reports_message = lambda: ""
 
 ytdl_format_options = {
-    "format": "bestaudio/best",
-    "nocheckcertificate": True,
-    "ignoreerrors": False,
-    "logtostderr": False,
-    "quiet": True,
-    "no_warnings": True,
-    "skip_download": True,
-    "extract_flat": "in_playlist",
-    "default_search": "ytsearch",
+    "format": "bestaudio[ext=webm]/bestaudio",  # we want the best audio
+    "nocheckcertificate": True,  # just in case
+    "ignoreerrors": False,  # same
+    "quiet": True,  # no clutter
+    "no_warnings": True,  # same
+    "skip_download": True,  # duh...
+    "extract_flat": "in_playlist",  # don't process whole playlists
+    "default_search": "ytsearch",  # default search for non-link stuff
 }
 
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
-
-ffmpeg_options = [
-    "-vn",  # discard video
-    "-multiple_requests 1",  # uhhh
-    "-reconnect 1",  # reconnect on failure...
-    "-reconnect_streamed 1",  # ... even if streaming...
-    "-reconnect_delay_max 5",  # ... fail after 5s of failed attempts
-    "-fflags +discardcorrupt",  # don't crash on corrupt frames
-    "-bufsize 960k",  # small buffer (music is 192kbps)
-]
 
 
 class YoutubeTrack:
     def __init__(self, ytdl_info: Dict[str, str], processed: bool = True) -> None:
         self.from_ytdl(ytdl_info)
         self.processed = processed
+        self.requested_by: Optional[Member] = None
 
     def from_ytdl(self, ytdl_info: Dict[str, str]) -> None:
-        for attr in ("title", "url", "duration", "thumbnail", "channel"):
+        for attr in (
+            "title",
+            "url",
+            "duration",
+            "thumbnail",
+            "channel",
+            "id",
+            "acodec",
+        ):
             setattr(self, attr, ytdl_info.get(attr, ""))
 
     def update_info(self):
@@ -45,12 +44,29 @@ class YoutubeTrack:
         self.from_ytdl(new_info)
         self.processed = True
 
+    def as_audio(self):
+        return FFmpegTmpFileAudio(self.url, codec=self.acodec)
+
+    def as_embed(self):
+        embed = Embed(
+            description=f"[{self.title}]({self.url})",
+        )
+        embed.set_thumbnail(url=self.thumbnail)
+        embed.add_field(
+            name="Requested by", value=f"`{self.requested_by.display_name}`"
+        )
+        embed.add_field(name="Duration", value=self.pretty_duration)
+
+        return embed
+
     @property
     def pretty_duration(self):
-        return "{:02d}:{:02d}".format(*divmod(self.duration, 60))
+        return "{:02d}:{:02d}".format(*divmod(int(self.duration), 60))
 
-    def as_audio(self) -> FFmpegPCMAudio:
-        return FFmpegPCMAudio(self.url, options=" ".join(ffmpeg_options))
+    @property
+    def markdown_link(self):
+        link = f"https://www.youtube.com/watch?v={self.id}"
+        return f"[{self.title}]({link})"
 
 
 class YoutubePlaylist:
@@ -76,7 +92,7 @@ def yt_search(query: str) -> Union[None, YoutubeTrack, YoutubePlaylist]:
 
     elif data.get("_type") == "playlist":
         playlist = YoutubePlaylist(data)
-        # We only process the first entry, for thumbnail purposes
+        # We process the first entry, for thumbnail purposes
         playlist.entries[0].update_info()
         return playlist
 
