@@ -1,4 +1,5 @@
 import discord.ext.commands as commands
+from time import strftime, gmtime
 
 
 class NotInVoiceChannelFailure(commands.CheckFailure):
@@ -70,6 +71,9 @@ def check_bot_connected():
     return commands.check(predicate)
 
 
-def format_time(time: int) -> str:
+def format_time(seconds: int) -> str:
     """Takes a time in seconds and formats in HH:mm:ss or mm:ss,
     depending on whether it's above an hour."""
+
+    strformat = "%M:%S" if seconds < 3600 else "%H:%M:%S"
+    seconds = strftime(strformat, gmtime(seconds))

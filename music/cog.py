@@ -4,7 +4,7 @@ import time
 from discord.ext import commands
 from youtube_dl.utils import YoutubeDLError
 
-from .queue import TrackQueue
+from .queue import QueueError, TrackQueue
 from .utils import check_bot_connected, check_bot_voice, check_channel, check_voice
 from .youtube import yt_search
 
@@ -146,3 +146,23 @@ class Music(commands.Cog):
     @check_bot_connected()
     async def queue(self, ctx):
         await ctx.send(embed=self.queue.as_embed())
+
+    @commands.command()
+    @check_channel()
+    @check_voice()
+    @check_bot_connected()
+    async def remove(self, ctx, *args: int):
+        try:
+            removed_entries = self.queue.remove(args)
+
+            if len(removed_entries) == 1:
+                track = removed_entries[0]
+                await ctx.send(f"**Successfully removed `{track.title}`.**")
+            else:
+                await ctx.send(
+                    f"**Successfully removed `{len(removed_entries)}` tracks.**"
+                )
+        except QueueError as e:
+            await ctx.send(
+                f"**Invalid indices given fo command `remove` : {', '.join(e.args)}**"
+            )

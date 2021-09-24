@@ -1,9 +1,14 @@
-from time import strftime, gmtime, time
+import time
 from typing import List, Optional, Tuple, Union
 
 import discord
 
 from .youtube import YoutubePlaylist, YoutubeTrack
+from .utils import format_time
+
+
+class QueueError(Exception):
+    pass
 
 
 class TrackQueue:
@@ -12,12 +17,13 @@ class TrackQueue:
         self.playing: Optional[YoutubeTrack] = None
         self.playing_since: Optional[float] = None
 
-    def queue_time(self):
+    def queue_time(self) -> int:
         if self.playing is not None and self.playing_since is not None:
             track_remaining = int(self.playing_since + self.playing.duration - time())
         else:
             track_remaining = 0
-        return track_remaining + sum(entry.duration for entry in self.entries)
+
+        return track_remaining + int(sum(entry.duration for entry in self.entries))
 
     def enqueue(self, item: Union[YoutubeTrack, YoutubePlaylist]) -> discord.Embed:
         if isinstance(item, YoutubeTrack):
@@ -41,13 +47,13 @@ class TrackQueue:
         embed.add_field(name="Duration", value=track.pretty_duration)
         embed.add_field(
             name="Time until playing",
-            value="{:02d}:{:02d}".format(*divmod(time_until, 60))
-            if time_until
-            else "Now",
+            value=format_time(time_until) if time_until else "Now",
         )
         embed.add_field(
             name="Position in queue",
-            value="Now" if tracks_until == 0 else tracks_until,
+            value="Now"
+            if tracks_until == 0 and self.playing is None
+            else tracks_until + 1,
             inline=False,
         )
 
@@ -68,9 +74,7 @@ class TrackQueue:
         embed.set_thumbnail(url=playlist.entries[0].thumbnail)
         embed.add_field(
             name="Time until playing",
-            value="{:02d}:{:02d}".format(*divmod(time_until, 60))
-            if time_until
-            else "Now",
+            value=format_time(time_until) if time_until else "Now",
             inline=False,
         )
 
@@ -84,7 +88,7 @@ class TrackQueue:
 
         return embed
 
-    def next_song(self) -> Tuple[Optional[YoutubeTrack], Optional[discord.Embed]]:
+    def next_song(self) -> Tuple[Optional[YoutubeTrack], Optional[str]]:
         if self.entries:
             track = self.entries.pop(0)
             next_track = self.entries[0].title if self.entries else "Nothing"
@@ -115,9 +119,6 @@ class TrackQueue:
             up_next += "\n\n"
 
         num_tracks = len(self.entries)
-        tot_duration = int(sum(entry.duration for entry in self.entries))
-        strformat = "%M:%S" if tot_duration < 3600 else "%H:%M:%S"
-        tot_duration = strftime(strformat, gmtime(tot_duration))
 
         embed.description = f"""
         **Now playing:**
@@ -125,6 +126,19 @@ class TrackQueue:
 
         **Up next:**
         {up_next}
-        **{num_tracks} tracks in queue - {tot_duration} total length**"""
+        **{num_tracks} tracks in queue - {format_time(self.queue_time)} total length**
+        """
 
         return embed
+
+    def remove(self, args: List[int]):
+        invalid_args = [a for a in args if a > len(self.entries) or a <= 0]
+        if invalid_args:
+            raise QueueError(invalid_args)
+
+        else:
+            removed_entries = [e for (i, e) in enumerate(self.entries) if i + 1 in args]
+            new_entries = [e for (i, e) in enumerate(self.entries) if i + 1 not in args]
+            self.entries = new_entries
+
+            return removed_entries
