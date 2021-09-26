@@ -3,16 +3,10 @@ import shlex
 import subprocess
 import tempfile
 import time
+from typing import List, Optional, Union
+
 from discord.oggparse import OggStream
 from discord.player import FFmpegAudio
-
-before_options = [
-    "-y",
-    "-vn",  # discard everything but the audio
-    "-multiple_requests 1",  # not sure what this is doing
-    "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",  # reconnect on failure
-    "-fflags +discardcorrupt",  # don't crash on corrupt frames
-]
 
 
 class FFmpegTmpFileAudio(FFmpegAudio):
@@ -25,13 +19,13 @@ class FFmpegTmpFileAudio(FFmpegAudio):
 
     def __init__(
         self,
-        source,
+        source: str,
         *,
-        bitrate=128,
-        codec=None,
-        executable="ffmpeg",
-        before_options=before_options,
-        options=None,
+        bitrate: int = 128,
+        codec: Optional[str] = None,
+        executable: str = "ffmpeg",
+        before_options: Optional[Union[str, List[str]]] = None,
+        options: Optional[Union[str, List[str]]] = None,
     ):
         args = []
         subprocess_kwargs = {
@@ -64,6 +58,8 @@ class FFmpegTmpFileAudio(FFmpegAudio):
 
         if isinstance(options, str):
             args.append(options)
+        elif isinstance(options, list):
+            args.extend(options)
 
         args.append(self._tempfile.name)
         args = shlex.split(" ".join(args))
@@ -71,10 +67,9 @@ class FFmpegTmpFileAudio(FFmpegAudio):
         super().__init__(source, executable=executable, args=args, **subprocess_kwargs)
 
         # Wait for file to be nonempty to stream (avoids premature stopping)
-        t = time.time()
+        # Loses up to 1s on very slow connections...
         while not os.stat(self._tempfile.name).st_size:
             time.sleep(0.01)
-        print(time.time() - t)
 
         self._packet_iter = OggStream(self._tempfile).iter_packets()
 

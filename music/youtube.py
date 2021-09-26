@@ -1,14 +1,18 @@
-from typing import Dict, Optional, Union
+import dataclasses
+from typing import Any, Dict, List, Union
 
 import youtube_dl
-from discord import Member, Embed
+from discord import Embed, User
+from youtube_dl.utils import YoutubeDLError
+
 from .player import FFmpegTmpFileAudio
+from .utils import format_time
 
 # Suppress noise about console usage from errors
 youtube_dl.utils.bug_reports_message = lambda: ""
 
 ytdl_format_options = {
-    "format": "bestaudio[ext=webm]/bestaudio",  # we want the best audio
+    "format": "bestaudio[ext=webm]/bestaudio/best",  # we want the best audio
     "nocheckcertificate": True,  # just in case
     "ignoreerrors": False,  # same
     "quiet": True,  # no clutter
@@ -21,80 +25,103 @@ ytdl_format_options = {
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
 
 
-class YoutubeTrack:
-    def __init__(self, ytdl_info: Dict[str, str], processed: bool = True) -> None:
-        self.from_ytdl(ytdl_info)
-        self.processed = processed
-        self.requested_by: Optional[Member] = None
+ffmpeg_options = [
+    "-y",  # don't prompt for user input (yes to all)
+    "-vn",  # discard everything but the audio
+    "-multiple_requests 1",  # not sure what this is doing
+    "-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5",  # reconnect on failure
+    "-fflags +discardcorrupt",  # don't crash on corrupt frames
+]
 
-    def from_ytdl(self, ytdl_info: Dict[str, str]) -> None:
-        for attr in (
-            "title",
-            "url",
-            "duration",
-            "thumbnail",
-            "channel",
-            "id",
-            "acodec",
-        ):
-            setattr(self, attr, ytdl_info.get(attr, ""))
 
-    def update_info(self):
-        new_info = ytdl.extract_info(self.url, ie_key="Youtube")
-        self.from_ytdl(new_info)
-        self.processed = True
-
-    def as_audio(self):
-        return FFmpegTmpFileAudio(self.url, codec=self.acodec)
-
-    def as_embed(self):
-        embed = Embed(
-            description=f"[{self.title}]({self.url})",
-        )
-        embed.set_thumbnail(url=self.thumbnail)
-        embed.add_field(
-            name="Requested by", value=f"`{self.requested_by.display_name}`"
-        )
-        embed.add_field(name="Duration", value=self.pretty_duration)
-
-        return embed
+@dataclasses.dataclass
+class BaseYoutubeTrack:
+    title: str
+    url: str
+    duration: float
+    id: str
+    requested_by: User
+    thumbnail: str = ""
+    channel: str = ""
+    acodec: str = ""
+    processed: bool = True
 
     @property
-    def pretty_duration(self):
-        return "{:02d}:{:02d}".format(*divmod(int(self.duration), 60))
-
-    @property
-    def markdown_link(self):
+    def markdown_link(self) -> str:
         link = f"https://www.youtube.com/watch?v={self.id}"
         return f"[{self.title}]({link})"
 
 
+class YoutubeTrack(BaseYoutubeTrack):
+    def __init__(self, *args, **kwargs):
+        fields = [field.name for field in dataclasses.fields(self)]
+        filtered_kwargs = {
+            name: value for (name, value) in kwargs.items() if name in fields
+        }
+
+        super().__init__(*args, **filtered_kwargs)
+
+    def update_info(self) -> None:
+        new_info = ytdl.extract_info(self.url, ie_key="Youtube")
+        if new_info is None:
+            raise YoutubeDLError("Cannot update track information")
+
+        self.__init__(**new_info, processed=True, requested_by=self.requested_by)
+
+    def as_audio(self) -> FFmpegTmpFileAudio:
+        return FFmpegTmpFileAudio(
+            self.url, codec=self.acodec, before_options=ffmpeg_options
+        )
+
+    def as_embed(self) -> Embed:
+        embed = Embed(description=self.markdown_link)
+        embed.set_thumbnail(url=self.thumbnail)
+        embed.add_field(
+            name="Requested by", value=f"`{self.requested_by.display_name}`"
+        )
+        embed.add_field(name="Duration", value=format_time(self.duration))
+
+        return embed
+
+
 class YoutubePlaylist:
-    def __init__(self, ytdl_info: Dict[str, str]) -> None:
+    title: str
+    entries: List[YoutubeTrack]
+    requested_by: User
+
+    def __init__(self, ytdl_info: Dict[str, Any], requested_by: User) -> None:
         self.title = ytdl_info["title"]
+        entries = ytdl_info["entries"]
         self.entries = [
-            YoutubeTrack(info, processed=False) for info in ytdl_info["entries"]
+            YoutubeTrack(**info, processed=False, requested_by=requested_by)
+            for info in entries
         ]
+        self.requested_by = requested_by
 
 
-def yt_search(query: str) -> Union[None, YoutubeTrack, YoutubePlaylist]:
+def yt_search(
+    query: str, requested_by: User
+) -> Union[None, YoutubeTrack, YoutubePlaylist]:
     data = ytdl.extract_info(query)
+
+    if data is None:
+        return None
 
     if data["extractor"] == "youtube:search":
         # Search results: we only take the first one if it exists
         results = data.get("entries", [])
         if len(results):
-            track = YoutubeTrack(results[0])
+            track = YoutubeTrack(**results[0], requested_by=requested_by)
             track.update_info()
             return track
         else:
             return None
 
     elif data.get("_type") == "playlist":
-        playlist = YoutubePlaylist(data)
+        playlist = YoutubePlaylist(data, requested_by=requested_by)
         # We process the first entry, for thumbnail purposes
         playlist.entries[0].update_info()
         return playlist
 
     else:
-        return YoutubeTrack(data)
+        return YoutubeTrack(**data)

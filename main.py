@@ -1,6 +1,10 @@
+import logging
+
 from discord.ext import commands
 
 from music.cog import Music
+
+logging.basicConfig(level=logging.INFO)
 
 bot = commands.Bot(
     command_prefix=commands.when_mentioned_or(">"),

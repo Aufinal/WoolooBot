@@ -3,8 +3,8 @@ from typing import List, Optional, Tuple, Union
 
 import discord
 
-from .youtube import YoutubePlaylist, YoutubeTrack
 from .utils import format_time
+from .youtube import YoutubePlaylist, YoutubeTrack
 
 
 class QueueError(Exception):
@@ -44,7 +44,7 @@ class TrackQueue:
         )
         embed.set_thumbnail(url=track.thumbnail)
         embed.add_field(name="Channel", value=track.channel)
-        embed.add_field(name="Duration", value=track.pretty_duration)
+        embed.add_field(name="Duration", value=format_time(track.duration))
         embed.add_field(
             name="Time until playing",
             value=format_time(time_until) if time_until else "Now",
@@ -62,9 +62,6 @@ class TrackQueue:
     def enqueue_playlist(self, playlist: YoutubePlaylist) -> discord.Embed:
         time_until = self.queue_time()
         tracks_until = len(self.entries)
-        for entry in playlist.entries:
-            entry.requested_by = playlist.requested_by
-
         self.entries.extend(playlist.entries)
 
         embed = discord.Embed(description=playlist.title)
@@ -102,18 +99,21 @@ class TrackQueue:
     def as_embed(self) -> discord.Embed:
         embed = discord.Embed(title="Current queue")
 
-        now_playing = "   {} | {} | Requested by {}".format(
-            self.playing.markdown_link,
-            self.playing.pretty_duration,
-            self.playing.requested_by.name,
-        )
+        if self.playing is not None:
+            now_playing = "   {} | {} | Requested by {}".format(
+                self.playing.markdown_link,
+                format_time(self.playing.duration),
+                self.playing.requested_by.name,
+            )
+        else:
+            now_playing = "Nothing"
 
         up_next = ""
         for (i, track) in enumerate(self.entries[:10]):
             up_next += "{}. {} | {} | Requested by {}".format(
                 i + 1,
                 track.markdown_link,
-                track.pretty_duration,
+                format_time(track.duration),
                 track.requested_by.name,
             )
             up_next += "\n\n"
@@ -126,7 +126,7 @@ class TrackQueue:
 
         **Up next:**
         {up_next}
-        **{num_tracks} tracks in queue - {format_time(self.queue_time)} total length**
+        **{num_tracks} tracks in queue - {format_time(self.queue_time())} total length**
         """
 
         return embed

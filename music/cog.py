@@ -5,7 +5,13 @@ from discord.ext import commands
 from youtube_dl.utils import YoutubeDLError
 
 from .queue import QueueError, TrackQueue
-from .utils import check_bot_connected, check_bot_voice, check_channel, check_voice
+from .utils import (
+    MessageableException,
+    check_bot_connected,
+    check_bot_voice,
+    check_channel,
+    check_voice,
+)
 from .youtube import yt_search
 
 
@@ -16,21 +22,19 @@ class Music(commands.Cog):
         self.queue = TrackQueue()
         self.bound_channel = None
 
-    async def cog_command_error(self, ctx, error):
-        print(error)
-        if isinstance(error, commands.CheckFailure) and hasattr(error, "message"):
+    async def cog_command_error(
+        self, ctx: commands.Context, error: commands.CommandError
+    ):
+        if isinstance(error, MessageableException):
             await ctx.send(error.message)
 
         return await super().cog_command_error(ctx, error)
 
-    async def speak(self, *args, **kwargs):
-        # shortcut for sending messages to bound channel
-        return await self.bound_channel.send(*args, **kwargs)
-
     @commands.command()
-    @check_voice()
-    @check_channel()
-    async def play(self, ctx, *, query: str):
+    @check_channel
+    @check_voice
+    async def play(self, ctx: commands.Context, *, query: str):
+
         if ctx.voice_client is None:
             # First use: we join the channel of the command's author and bind
             voice_channel = ctx.author.voice.channel
@@ -38,27 +42,30 @@ class Music(commands.Cog):
 
             self.bound_channel = text_channel
             await voice_channel.connect()
-            await self.speak(
+            await ctx.send(
                 f"Joined {voice_channel.mention} and bound to {text_channel.mention}."
             )
 
+        assert ctx.voice_client is not None
+
         try:
-            search_result = await self.bot.loop.run_in_executor(None, yt_search, query)
+            search_result = await self.bot.loop.run_in_executor(
+                None, yt_search, query, ctx.author
+            )
         except YoutubeDLError as e:
-            return await ctx.channel.send(f"Youtube-dl error : {e}")
+            return await ctx.send(f"Youtube-dl error : {e}")
 
         if search_result is None:
-            return await self.speak("No results found !")
+            return await ctx.send("No results found !")
 
         else:
-            search_result.requested_by = ctx.author
             embed = self.queue.enqueue(search_result)
-            await self.speak(embed=embed)
+            await ctx.send(embed=embed)
 
         if not ctx.voice_client.is_playing():
             return await self.next_track(ctx)
 
-    async def next_track(self, ctx):
+    async def next_track(self, ctx: commands.Context):
         if ctx.voice_client is None:
             return
 
@@ -74,7 +81,8 @@ class Music(commands.Cog):
         embed = track.as_embed()
         embed.add_field(name="Up next", value=next_track, inline=False)
 
-        await self.speak(embed=embed)
+        assert self.bound_channel is not None
+        await self.bound_channel.send(embed=embed)
 
         if not ctx.voice_client.is_playing():
 
@@ -86,11 +94,7 @@ class Music(commands.Cog):
                 future = asyncio.run_coroutine_threadsafe(
                     self.next_track(ctx), self.bot.loop
                 )
-
-                try:
-                    future.result()
-                except BaseException:
-                    pass
+                return future.result()
 
             ctx.voice_client.play(track.as_audio(), after=after)
 
@@ -101,59 +105,65 @@ class Music(commands.Cog):
         self.queue.playing_since = time.time()
 
     @commands.command()
-    @check_channel()
-    @check_voice()
-    @check_bot_voice()
-    async def skip(self, ctx):
+    @check_channel
+    @check_voice
+    @check_bot_voice
+    async def skip(self, ctx: commands.Context):
         await ctx.send("**Skipping current track.**")
         return await self.next_track(ctx)
 
     @commands.command()
-    @check_channel()
-    @check_voice()
-    @check_bot_voice()
-    async def pause(self, ctx):
+    @check_channel
+    @check_voice
+    @check_bot_voice
+    async def pause(self, ctx: commands.Context):
+        assert ctx.voice_client is not None
+
         ctx.voice_client.pause()
         self.paused_at = time.time()
         return await ctx.send("**Playback paused.**")
 
     @commands.command()
-    @check_channel()
-    @check_voice()
-    @check_bot_connected()
-    async def resume(self, ctx):
+    @check_channel
+    @check_voice
+    @check_bot_connected
+    async def resume(self, ctx: commands.Context):
+        assert ctx.voice_client is not None
+
         if not ctx.voice_client.is_paused():
             return await ctx.send("**I am not paused.**")
         ctx.voice_client.resume()
-        if getattr(self, "paused_at", None):
+        if self.queue.playing_since is not None and getattr(self, "paused_at", None):
             self.queue.playing_since += time.time() - self.paused_at
-            self.paused_at = None
+
         return await ctx.send("**Playback resumed.**")
 
     @commands.command()
-    @check_channel()
-    @check_voice()
-    @check_bot_connected()
-    async def disconnect(self, ctx):
+    @check_channel
+    @check_voice
+    @check_bot_connected
+    async def disconnect(self, ctx: commands.Context):
+        assert ctx.voice_client is not None
+
         self.bound_channel = None
         self.queue.clear()
         await ctx.voice_client.disconnect()
         return await ctx.send("**Successfully disconnected.**")
 
-    @commands.command()
-    @check_channel()
-    @check_voice()
-    @check_bot_connected()
-    async def queue(self, ctx):
+    @commands.command(name="queue")
+    @check_channel
+    @check_voice
+    @check_bot_connected
+    async def view_queue(self, ctx: commands.Context):
         await ctx.send(embed=self.queue.as_embed())
 
     @commands.command()
-    @check_channel()
-    @check_voice()
-    @check_bot_connected()
-    async def remove(self, ctx, *args: int):
+    @check_channel
+    @check_voice
+    @check_bot_connected
+    async def remove(self, ctx: commands.Context, *args: int):
         try:
-            removed_entries = self.queue.remove(args)
+            removed_entries = self.queue.remove(list(args))
 
             if len(removed_entries) == 1:
                 track = removed_entries[0]
@@ -164,5 +174,7 @@ class Music(commands.Cog):
                 )
         except QueueError as e:
             await ctx.send(
-                f"**Invalid indices given fo command `remove` : {', '.join(e.args)}**"
+                "**Invalid indices given for command `remove` : {}**".format(
+                    ", ".join(map(str, e.args))
+                )
             )

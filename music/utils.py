@@ -1,18 +1,24 @@
+import functools
+from time import gmtime, strftime
+
 import discord.ext.commands as commands
-from time import strftime, gmtime
 
 
-class NotInVoiceChannelFailure(commands.CheckFailure):
+class MessageableException(commands.CommandError):
+    message: str
+
+
+class NotInVoiceChannelFailure(MessageableException):
     message = "**You need to be in a voice channel to use this command.**"
     pass
 
 
-class WrongVoiceChannelFailure(commands.CheckFailure):
+class WrongVoiceChannelFailure(MessageableException):
     message = "**You are not in the right voice channel.**"
     pass
 
 
-class WrongTextChannelFailure(commands.CheckFailure):
+class WrongTextChannelFailure(MessageableException):
     pass
 
 
@@ -26,54 +32,58 @@ class BotNotConnectedFailure(commands.CheckFailure):
     pass
 
 
-def check_voice():
-    def predicate(ctx):
+def check_voice(func):
+    @functools.wraps(func)
+    async def _wrapped_func(self, ctx, *args, **kwargs):
         bot_voice = ctx.voice_client
         user_voice = ctx.author.voice
 
         if user_voice is None:
             raise NotInVoiceChannelFailure
         elif (bot_voice is not None) and (bot_voice.channel != user_voice.channel):
-            raise WrongVoiceChannelFailure
+            raise WrongVoiceChannelFailure(bot_voice.channel, user_voice.channel)
 
-        return True
+        return await func(self, ctx, *args, **kwargs)
 
-    return commands.check(predicate)
+    return _wrapped_func
 
 
-def check_channel():
-    def predicate(ctx):
+def check_channel(func):
+    @functools.wraps(func)
+    async def _wrapped_func(self, ctx, *args, **kwargs):
         if ctx.cog.bound_channel is not None and ctx.cog.bound_channel != ctx.channel:
-            raise WrongTextChannelFailure
+            raise WrongTextChannelFailure(ctx.cog.bound_channel, ctx.channel)
 
-        return True
+        return await func(self, ctx, *args, **kwargs)
 
-    return commands.check(predicate)
+    return _wrapped_func
 
 
-def check_bot_voice():
-    def predicate(ctx):
+def check_bot_voice(func):
+    @functools.wraps(func)
+    async def _wrapped_func(self, ctx, *args, **kwargs):
         if not ctx.voice_client.is_playing():
             raise BotNotPlayingFailure
 
-        return True
+        return await func(self, ctx, *args, **kwargs)
 
-    return commands.check(predicate)
+    return _wrapped_func
 
 
-def check_bot_connected():
-    def predicate(ctx):
+def check_bot_connected(func):
+    @functools.wraps(func)
+    async def _wrapped_func(self, ctx, *args, **kwargs):
         if not ctx.voice_client.is_connected():
             raise BotNotConnectedFailure
 
-        return True
+        return await func(self, ctx, *args, **kwargs)
 
-    return commands.check(predicate)
+    return _wrapped_func
 
 
-def format_time(seconds: int) -> str:
+def format_time(seconds: float) -> str:
     """Takes a time in seconds and formats in HH:mm:ss or mm:ss,
     depending on whether it's above an hour."""
 
     strformat = "%M:%S" if seconds < 3600 else "%H:%M:%S"
-    seconds = strftime(strformat, gmtime(seconds))
+    return strftime(strformat, gmtime(seconds))
