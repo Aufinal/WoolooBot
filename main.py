@@ -1,4 +1,5 @@
 import logging
+from os import getenv
 
 from discord.ext import commands
 
@@ -20,4 +21,4 @@ async def on_ready():
 
 
 bot.add_cog(Music(bot))
-bot.run("ODg3MzczNjAyMjMwNTIxODg2.YUDNEQ.ktfn89y23cp0p2IMs1pJYyNlYW4")
+bot.run(getenv("TOKEN"))
