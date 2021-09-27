@@ -1,3 +1,4 @@
+import random
 import time
 from typing import List, Optional, Tuple, Union
 
@@ -19,7 +20,9 @@ class TrackQueue:
 
     def queue_time(self) -> int:
         if self.playing is not None and self.playing_since is not None:
-            track_remaining = int(self.playing_since + self.playing.duration - time())
+            track_remaining = int(
+                self.playing_since + self.playing.duration - time.time()
+            )
         else:
             track_remaining = 0
 
@@ -96,8 +99,12 @@ class TrackQueue:
     def clear(self) -> None:
         self.entries = []
 
-    def as_embed(self) -> discord.Embed:
+    def as_embed(self, start=0) -> discord.Embed:
         embed = discord.Embed(title="Current queue")
+
+        if start and start >= len(self.entries):
+            # We allow start=0 for an empty queue
+            raise QueueError
 
         if self.playing is not None:
             now_playing = "   {} | {} | Requested by {}".format(
@@ -109,9 +116,9 @@ class TrackQueue:
             now_playing = "Nothing"
 
         up_next = ""
-        for (i, track) in enumerate(self.entries[:10]):
+        for (i, track) in enumerate(self.entries[start : start + 10]):
             up_next += "{}. {} | {} | Requested by {}".format(
-                i + 1,
+                start + i + 1,
                 track.markdown_link,
                 format_time(track.duration),
                 track.requested_by.name,
@@ -124,11 +131,10 @@ class TrackQueue:
         **Now playing:**
         {now_playing}
 
-        **Up next:**
+        **Up next (showing tracks {start+1} - {start+10}):**
         {up_next}
         **{num_tracks} tracks in queue - {format_time(self.queue_time())} total length**
         """
-
         return embed
 
     def remove(self, args: List[int]):
@@ -142,3 +148,6 @@ class TrackQueue:
             self.entries = new_entries
 
             return removed_entries
+
+    def shuffle(self):
+        random.shuffle(self.entries)
