@@ -51,7 +51,10 @@ def check_voice(func):
 def check_channel(func):
     @functools.wraps(func)
     async def _wrapped_func(self, ctx, *args, **kwargs):
-        if ctx.cog.bound_channel is not None and ctx.cog.bound_channel != ctx.channel:
+        if (
+            ctx.cog.bound_channel[ctx] is not None
+            and ctx.cog.bound_channel[ctx] != ctx.channel
+        ):
             raise WrongTextChannelFailure(ctx.cog.bound_channel, ctx.channel)
 
         return await func(self, ctx, *args, **kwargs)

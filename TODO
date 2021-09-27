@@ -1,5 +1,5 @@
 [] Turn all commands into slash commands
 [] Docstrings / help command
-[] Bot works on several servers at once
+[x] Bot works on several servers at once
 [] `shuffle` command
 [] `clear` command
