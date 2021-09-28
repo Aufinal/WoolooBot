@@ -35,7 +35,7 @@ class Music(commands.Cog):
 
         return await super().cog_command_error(ctx, error)
 
-    @commands.command()
+    @commands.command(aliases=["p"])
     @check_channel
     @check_voice
     async def play(self, ctx: commands.Context, *, query: str):
@@ -78,12 +78,14 @@ class Music(commands.Cog):
 
         if track is None:
             ctx.voice_client.stop()
+            self.queue[ctx].playing = None
             return
 
         if not track.processed:
             await self.bot.loop.run_in_executor(None, track.update_info)
 
         embed = track.as_embed()
+        embed.title = "Now playing"
         embed.add_field(name="Up next", value=next_track, inline=False)
 
         assert self.bound_channel[ctx] is not None
@@ -109,7 +111,7 @@ class Music(commands.Cog):
         self.queue[ctx].playing = track
         self.queue[ctx].playing_since = time.time()
 
-    @commands.command()
+    @commands.command(aliases=["s"])
     @check_channel
     @check_voice
     @check_bot_voice

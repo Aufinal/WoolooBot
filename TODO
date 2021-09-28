@@ -1,5 +1,6 @@
 [] Turn all commands into slash commands -> later
 [x] Docstrings / help command
 [x] Bot works on several servers at once
-[] `shuffle` command
+[x] `shuffle` command
 [x] `clear` command
+[] Diagnose random speedups in some songs (discardcorrupt ?)
