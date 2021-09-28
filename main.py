@@ -11,7 +11,7 @@ logging.basicConfig(level=logging.INFO)
 bot = commands.Bot(
     command_prefix=commands.when_mentioned_or(">"),
     description="Wooloo's favourite music bot",
-    activity=discord.Game(name="`>help` | Wooloo supremacy"),
+    activity=discord.Game(name=">help | Wooloo supremacy"),
 )
 
 
