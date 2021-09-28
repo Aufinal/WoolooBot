@@ -267,6 +267,7 @@ class Music(commands.Cog):
         for client in bot.voice_clients:
 
             if is_idle(client):
+                print("IDLE: ", client.guild)
                 if self.idle_since[client.guild] is None:
                     self.idle_since[client.guild] = time.time()
 
@@ -275,6 +276,7 @@ class Music(commands.Cog):
                     < time.time()
                 ):
                     await self.cleanup(client.guild)
+                    self.idle_since[client] = None
 
             else:
                 self.idle_since[client.guild] = None
