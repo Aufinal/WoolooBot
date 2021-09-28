@@ -276,7 +276,7 @@ class Music(commands.Cog):
                     cast(float, self.idle_since[client.guild]) + MAX_IDLE_TIME
                     < time.time()
                 ):
-                    await self.cleanup(client.guild)
+                    await self.cleanup(client)
                     self.idle_since[client] = None
 
             else:
