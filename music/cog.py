@@ -170,7 +170,9 @@ class Music(commands.Cog):
     @check_voice
     @check_bot_connected
     async def disconnect(self, ctx: commands.Context):
-        """Disconnects from current voice channel, and resets the queue."""
+        """Disconnects from current voice channel.
+
+        Also unbounds the bot from any text channels and clears the queue."""
         assert ctx.voice_client is not None
 
         self.bound_channel[ctx] = None

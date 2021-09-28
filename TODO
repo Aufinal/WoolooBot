@@ -4,3 +4,4 @@
 [x] `shuffle` command
 [x] `clear` command
 [] Diagnose random speedups in some songs (discardcorrupt ?)
+[] Make better error messages (just showing them is a good start)
