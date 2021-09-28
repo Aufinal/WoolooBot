@@ -74,6 +74,12 @@ class Music(commands.Cog):
         if ctx.voice_client is None:
             return
 
+        if len(ctx.voice_client.channel.members) == 1:
+            # If we are alone, just quit
+            self.bound_channel[ctx] = None
+            self.queue[ctx].clear()
+            return await ctx.voice_client.disconnect()
+
         (track, next_track) = self.queue[ctx].next_song()
 
         if track is None:
