@@ -10,26 +10,22 @@ class MessageableException(commands.CommandError):
 
 class NotInVoiceChannelFailure(MessageableException):
     message = "**You need to be in a voice channel to use this command.**"
-    pass
 
 
 class WrongVoiceChannelFailure(MessageableException):
     message = "**You are not in the right voice channel.**"
+
+
+class WrongTextChannelFailure(commands.CommandError):
     pass
 
 
-class WrongTextChannelFailure(MessageableException):
-    pass
-
-
-class BotNotPlayingFailure(commands.CheckFailure):
+class BotNotPlayingFailure(MessageableException):
     message = "**I am not playing anything right now.**"
-    pass
 
 
-class BotNotConnectedFailure(commands.CheckFailure):
+class BotNotConnectedFailure(MessageableException):
     message = "**I am not connected to a voice channel.**"
-    pass
 
 
 def check_voice(func):

@@ -38,6 +38,8 @@ class Music(commands.Cog):
         self.paused_at: GuildVar[Optional[float]] = GuildVar(lambda: None)
         self.idle_since: GuildVar[Optional[float]] = GuildVar(lambda: None)
 
+        self.check_idle.start()
+
     async def cog_command_error(
         self, ctx: commands.Context, error: commands.CommandError
     ):
@@ -267,7 +269,6 @@ class Music(commands.Cog):
         for client in bot.voice_clients:
 
             if is_idle(client):
-                print("IDLE: ", client.guild)
                 if self.idle_since[client.guild] is None:
                     self.idle_since[client.guild] = time.time()
 
