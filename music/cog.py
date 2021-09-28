@@ -1,9 +1,9 @@
 import asyncio
 import time
-from typing import Optional
+from typing import Optional, cast
 
 import discord
-from discord.ext import commands
+from discord.ext import commands, tasks
 from youtube_dl.utils import YoutubeDLError
 
 from .guildstate import GuildVar
@@ -17,15 +17,26 @@ from .utils import (
 )
 from .youtube import yt_search
 
+# Maximum idle time before the bot disconnects from channel
+MAX_IDLE_TIME = 120.0
+
+
+def is_idle(client: discord.VoiceClient):
+    is_alone = len(cast(discord.VoiceChannel, client.channel).members) == 1
+    is_silent = not client.is_playing()
+
+    return is_alone or is_silent
+
 
 class Music(commands.Cog):
-    def __init__(self, bot):
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.queue = GuildVar(TrackQueue)
         self.bound_channel: GuildVar[Optional[discord.TextChannel]] = GuildVar(
             lambda: None
         )
         self.paused_at: GuildVar[Optional[float]] = GuildVar(lambda: None)
+        self.idle_since: GuildVar[Optional[float]] = GuildVar(lambda: None)
 
     async def cog_command_error(
         self, ctx: commands.Context, error: commands.CommandError
@@ -167,9 +178,18 @@ class Music(commands.Cog):
             self.queue[ctx].playing_since is not None
             and self.paused_at[ctx] is not None
         ):
-            self.queue[ctx].playing_since += time.time() - self.paused_at[ctx]
+            self.queue[ctx].playing_since += (
+                time.time() - self.paused_at[ctx]  # type:ignore
+            )
 
         return await ctx.send("**Playback resumed.**")
+
+    async def cleanup(self, client: discord.VoiceClient):
+        if client.guild is not None:
+            self.bound_channel[client.guild] = None
+            self.queue[client.guild].clear()
+
+        return await client.disconnect()
 
     @commands.command()
     @check_channel
@@ -180,10 +200,7 @@ class Music(commands.Cog):
 
         Also unbounds the bot from any text channels and clears the queue."""
         assert ctx.voice_client is not None
-
-        self.bound_channel[ctx] = None
-        self.queue[ctx].clear()
-        await ctx.voice_client.disconnect()
+        await self.cleanup(ctx.voice_client)
         return await ctx.send("**Successfully disconnected.**")
 
     @commands.command(name="queue")
@@ -243,3 +260,21 @@ class Music(commands.Cog):
         """Shuffles the track queue."""
         self.queue[ctx].shuffle()
         await ctx.send("**Successfully shuffled the track queue.**")
+
+    @tasks.loop(seconds=5.0)
+    async def check_idle(self):
+        bot = self.bot
+        for client in bot.voice_clients:
+
+            if is_idle(client):
+                if self.idle_since[client.guild] is None:
+                    self.idle_since[client.guild] = time.time()
+
+                elif (
+                    cast(float, self.idle_since[client.guild]) + MAX_IDLE_TIME
+                    < time.time()
+                ):
+                    await self.cleanup(client.guild)
+
+            else:
+                self.idle_since[client.guild] = None
