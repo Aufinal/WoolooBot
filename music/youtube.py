@@ -61,7 +61,7 @@ class YoutubeTrack(BaseYoutubeTrack):
         super().__init__(*args, **filtered_kwargs)
 
     def update_info(self) -> None:
-        new_info = ytdl.extract_info(self.url, ie_key="Youtube")
+        new_info = ytdl.extract_info(self.id, ie_key="Youtube")
         if new_info is None:
             raise YoutubeDLError("Cannot update track information")
 
