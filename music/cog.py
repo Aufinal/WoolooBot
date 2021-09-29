@@ -296,7 +296,7 @@ class Music(commands.Cog):
                         f"Disconnecting due to inactivity in guild {client.guild.name}"
                     )
                     await self.cleanup(client)
-                    self.idle_since[client] = None
+                    self.idle_since[client.guild] = None
 
             else:
                 self.idle_since[client.guild] = None
