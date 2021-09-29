@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import os
 import time
 from typing import Optional, cast
@@ -23,6 +24,8 @@ MAX_IDLE_TIME = 120.0
 
 # Maximum waiting time for YT video processing
 MAX_YT_WAIT_TIME = 5
+
+log = logging.getLogger(__name__)
 
 
 def is_idle(client: discord.VoiceClient):
@@ -114,6 +117,7 @@ class Music(commands.Cog):
         await self.bound_channel[ctx].send(embed=embed)  # type: ignore
 
         player = track.as_audio()
+        log.info("Playing ", track.url)
 
         # Wait for file to be nonempty to stream (avoids premature stopping)
         # Loses up to 1s on very slow connections...
@@ -293,6 +297,9 @@ class Music(commands.Cog):
                     cast(float, self.idle_since[client.guild]) + MAX_IDLE_TIME
                     < time.time()
                 ):
+                    log.info(
+                        f"Disconnecting due to inactivity in guild {client.guild.name}"
+                    )
                     await self.cleanup(client)
                     self.idle_since[client] = None
 
