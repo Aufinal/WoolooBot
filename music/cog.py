@@ -94,12 +94,6 @@ class Music(commands.Cog):
         if ctx.voice_client is None:
             return
 
-        if len(ctx.voice_client.channel.members) == 1:
-            # If we are alone, just quit
-            self.bound_channel[ctx] = None
-            self.queue[ctx].clear()
-            return await ctx.voice_client.disconnect()
-
         (track, next_track) = self.queue[ctx].next_song()
 
         if track is None:
@@ -123,6 +117,7 @@ class Music(commands.Cog):
         # Loses up to 1s on very slow connections...
         t = time.time()
         while not os.stat(player._tempfile.name).st_size:
+            time.sleep(0.01)
             if time.time() - t > MAX_YT_WAIT_TIME:
                 await self.bound_channel[ctx].send(  # type:ignore
                     "**Can't play the requested youtube video: link timed out**"

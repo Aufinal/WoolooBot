@@ -20,6 +20,7 @@ ytdl_format_options = {
     "skip_download": True,  # duh...
     "extract_flat": "in_playlist",  # don't process whole playlists
     "default_search": "ytsearch",  # default search for non-link stuff
+    "cachedir": False,
 }
 
 ytdl = youtube_dl.YoutubeDL(ytdl_format_options)
