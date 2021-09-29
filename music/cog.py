@@ -139,10 +139,10 @@ class Music(commands.Cog):
                 )
                 return future.result()
 
-            ctx.voice_client.play(track.as_audio(), after=after)
+            ctx.voice_client.play(player, after=after)
 
         else:
-            ctx.voice_client.source = track.as_audio()
+            ctx.voice_client.source = player
 
         self.queue[ctx].playing = track
         self.queue[ctx].playing_since = time.time()
