@@ -44,7 +44,6 @@ class BaseYoutubeTrack:
     thumbnail: str = ""
     channel: str = ""
     acodec: str = ""
-    processed: bool = True
 
     @property
     def markdown_link(self) -> str:
@@ -66,7 +65,7 @@ class YoutubeTrack(BaseYoutubeTrack):
         if new_info is None:
             raise YoutubeDLError("Cannot update track information")
 
-        self.__init__(**new_info, processed=True, requested_by=self.requested_by)
+        self.__init__(**new_info, requested_by=self.requested_by)
 
     def as_audio(self) -> FFmpegTmpFileAudio:
         return FFmpegTmpFileAudio(
@@ -93,8 +92,7 @@ class YoutubePlaylist:
         self.title = ytdl_info["title"]
         entries = ytdl_info["entries"]
         self.entries = [
-            YoutubeTrack(**info, processed=False, requested_by=requested_by)
-            for info in entries
+            YoutubeTrack(**info, requested_by=requested_by) for info in entries
         ]
         self.requested_by = requested_by
 

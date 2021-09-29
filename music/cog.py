@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 from typing import Optional, cast
 
@@ -19,6 +20,9 @@ from .youtube import yt_search
 
 # Maximum idle time before the bot disconnects from channel
 MAX_IDLE_TIME = 120.0
+
+# Maximum waiting time for YT video processing
+MAX_YT_WAIT_TIME = 5
 
 
 def is_idle(client: discord.VoiceClient):
@@ -100,8 +104,7 @@ class Music(commands.Cog):
             self.queue[ctx].playing = None
             return
 
-        if not track.processed:
-            await self.bot.loop.run_in_executor(None, track.update_info)
+        await self.bot.loop.run_in_executor(None, track.update_info)
 
         embed = track.as_embed()
         embed.title = "Now playing"
@@ -109,6 +112,20 @@ class Music(commands.Cog):
 
         assert self.bound_channel[ctx] is not None
         await self.bound_channel[ctx].send(embed=embed)  # type: ignore
+
+        player = track.as_audio()
+
+        # Wait for file to be nonempty to stream (avoids premature stopping)
+        # Loses up to 1s on very slow connections...
+        t = time.time()
+        while not os.stat(player._tempfile.name).st_size:
+            if time.time() - t > MAX_YT_WAIT_TIME:
+                await self.bound_channel[ctx].send(  # type:ignore
+                    "**Can't play the requested youtube video: link timed out**"
+                )
+                return await self.next_track(ctx)
+
+        time.sleep(0.1)
 
         if not ctx.voice_client.is_playing():
 

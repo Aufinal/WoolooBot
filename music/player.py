@@ -1,8 +1,6 @@
-import os
 import shlex
 import subprocess
 import tempfile
-import time
 from typing import List, Optional, Union
 
 from discord.oggparse import OggStream
@@ -65,12 +63,6 @@ class FFmpegTmpFileAudio(FFmpegAudio):
         args = shlex.split(" ".join(args))
 
         super().__init__(source, executable=executable, args=args, **subprocess_kwargs)
-
-        # Wait for file to be nonempty to stream (avoids premature stopping)
-        # Loses up to 1s on very slow connections...
-        while not os.stat(self._tempfile.name).st_size:
-            time.sleep(0.01)
-
         self._packet_iter = OggStream(self._tempfile).iter_packets()
 
     def read(self):
