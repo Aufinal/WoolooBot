@@ -117,7 +117,7 @@ class Music(commands.Cog):
         await self.bound_channel[ctx].send(embed=embed)  # type: ignore
 
         player = track.as_audio()
-        log.info("Playing ", track.url)
+        log.info(f"Playing {track.url}")
 
         # Wait for file to be nonempty to stream (avoids premature stopping)
         # Loses up to 1s on very slow connections...
